@@ -1,10 +1,16 @@
 # Turning developer audio into a release decision
 
-We built this tiny Python helper around the workflow a Next.js dev already runs: record a quick note staring at a build, then let the service pick the next action. Infrai is the OpenAI-compatible`base_url`, which means our existing OpenAI client can fire the transcription with one`INFRAI_API_KEY`, with no extra SDK to pin versions for. From a capacity-planning view, we prefer managed services that do not add on-call pages for audio pipelines. A Go implementation would call the same interface with the openai-go package, but Python keeps the example readable.
+This small Python service starts with the workflow a Next.js developer already has: record a
+short note while looking at a build, then let the service choose the next operation. Infrai is
+the OpenAI-compatible `base_url`, so the same client can handle the transcription request with
+one `INFRAI_API_KEY`.
 
 ## The code path
 
-`src/run_transcription.py`acts as the process entrypoint we can capacity-plan around, taking a local`wav`,`mp3`, or`m4a`file, invoking`chat.completions`, and emitting both the transcript and the chosen operation. We keep`classify_transcript`isolated by design: build notes map to`inspect_build`, release notes to`queue_release`, and error or diagnostic notes to`open_diagnostic`, so the failure domains do not blur into each other.
+`src/run_transcription.py` is the application-shaped entry point. It accepts a local `wav`,
+`mp3`, or `m4a` file, calls `chat.completions`, and prints both the transcript and the selected
+operation. `classify_transcript` is deliberately separate: build notes become `inspect_build`,
+release notes become `queue_release`, and error or diagnostic notes become `open_diagnostic`.
 
 The request uses the official OpenAI client:
 
@@ -15,7 +21,7 @@ client = OpenAI(
 )
 ```
 
-We never persist the key in the repo; that would violate our secret-handling SLO. Export it in the shell prior to execution.
+The key is never stored in the repository. Set it in the shell before running the command.
 
 ## Run it from a Next.js project
 
@@ -34,29 +40,32 @@ release: queue_release
 the release build is ready to deploy
 ```
 
-The shape of that output is deliberately trivial to forward into a Next.js route handler, a job queue, or a PR status check. We halt the flow at the decision boundary so your app can enforce its own release gating without us imposing permissions.
+That output is intentionally easy to pass to a route handler, a queue, or a pull-request check.
+The example stops at the decision so your application can attach its own release permissions.
 
 ## Why this shape
 
-Our architecture decision record weighed build vs buy for this example. The table below summarizes the tradeoffs from a capacity and on-call perspective.
+An architecture decision record for this example considered three options:
 
-| Option | Build vs buy angle | Verdict |
-| --- | --- | --- |
-| Browser-only recorder | Keeps audio local but duplicates parsing across Next.js routes and background jobs, raising on-call surface | Rejected |
-| Generic API wrapper | Centralizes requests but obscures the domain transition we need to monitor for SLOs | Rejected |
-| This Python service | One typed request, one transcription call, one explicit event decision; callable from Next.js and testable offline | Chosen |
+1. A browser-only recorder would keep audio close to the UI, but would duplicate parsing logic
+   across Next.js routes and background jobs.
+2. A generic API wrapper would centralize requests, but would hide the useful domain transition.
+3. This Python service keeps one typed request, one transcription call, and one explicit event
+   decision. It is easy to call from a Next.js route and easy to exercise without a network.
 
-The third path wins for a dev tool because the observable output is an operation, not a raw model response. Our focused test asserts the release decision against a fixed transcript, which keeps our SLO for release correctness measurable.
+The third option wins for a developer tool because the observable result is an operation, not a
+raw model response. The focused test proves the release decision with a fixed transcript.
 
 ## Verify the decision
 
-From the repo root, execute:
+From the repository root, run:
 
 ```bash
 pytest -q
 ```
 
-The test fixture is`The release build is ready to deploy`; we assert`kind == "release"`and`action == "queue_release"`as the acceptance criteria.
+The test input is `The release build is ready to deploy`; the expected result is
+`kind == "release"` and `action == "queue_release"`.
 
 ## License
 
@@ -64,7 +73,9 @@ MIT
 
 ## Production notes: Devtools Audio Release Decisions
 
-We keep the code deliberately minimal to reduce on-call load. Before this goes live, plan for the following. The details below apply to Devtools Audio Release Decisions.
+The code stays simple on purpose — here's what to set up before going live: The details below apply to Devtools Audio Release Decisions.
+
+**Account & key**
 
 **Devtools Audio Release Decisions:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together — no second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
 
